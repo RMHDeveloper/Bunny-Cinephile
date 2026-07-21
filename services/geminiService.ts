@@ -1,25 +1,11 @@
 import { Movie, Recommendation } from '../types';
 import { PLACEHOLDER_STREAMING_PLATFORMS } from '../constants';
 
-// Ensure API_KEY is set in your environment (an OpenRouter key, e.g. sk-or-v1-...)
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  console.error("API_KEY environment variable is not set.");
-  // In a real app, you might want to throw an error or handle this more gracefully
-  // For this example, we'll proceed but operations will fail.
-}
-
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-// Pinned to specific free models instead of the "openrouter/free" auto-router,
-// which was inconsistently routing requests to slow reasoning models and even
-// a content-safety classifier unsuited for generating movie data. Listed in
-// priority order; OpenRouter fails over to the next one automatically.
-const OPENROUTER_MODELS = [
-  'nvidia/nemotron-3-nano-30b-a3b:free',
-  'openai/gpt-oss-20b:free',
-  'nvidia/nemotron-3-super-120b-a12b:free',
-];
+// The OpenRouter call and its API key now live server-side in api/openrouter.ts —
+// calling OpenRouter directly from the browser was both stalling consistently
+// (likely client-side network/proxy interference) and shipping the API key
+// in the public JS bundle.
+const API_ROUTE = '/api/openrouter';
 
 // Pulls the first balanced JSON array/object out of a model response, tolerating
 // markdown code fences or stray commentary that free-tier models sometimes add.
@@ -33,60 +19,19 @@ function parseJsonFromText<T>(text: string): T {
   return JSON.parse(jsonSlice);
 }
 
-const REQUEST_TIMEOUT_MS = 4000;
-
 async function callOpenRouterJSON<T>(prompt: string): Promise<T> {
-  if (!API_KEY) {
-    throw new Error("OpenRouter API Key is missing. Please ensure process.env.API_KEY is set.");
+  const response = await fetch(API_ROUTE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.content) {
+    throw new Error(data?.error || `Request to ${API_ROUTE} failed (${response.status}).`);
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
-        'X-Title': 'Bunny Cinephile',
-      },
-      body: JSON.stringify({
-        models: OPENROUTER_MODELS,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a JSON API. Respond with ONLY valid JSON matching the shape requested by the user. No markdown, no code fences, no commentary before or after the JSON.',
-          },
-          { role: 'user', content: prompt },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`OpenRouter API error (${response.status}): ${errText}`);
-    }
-
-    // The timeout must stay armed through this read too — a stalled response
-    // body (headers arrive fine, but the stream never finishes) previously
-    // hung forever because the timer was cleared right after fetch() resolved.
-    const data = await response.json();
-    const content: string | undefined = data?.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error('Empty response from OpenRouter API.');
-    }
-    return parseJsonFromText<T>(content);
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(`OpenRouter request timed out after ${REQUEST_TIMEOUT_MS}ms.`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  return parseJsonFromText<T>(data.content);
 }
 
 // Utility function to generate a consistent, canonical ID from a movie title

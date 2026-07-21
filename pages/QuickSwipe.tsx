@@ -72,15 +72,9 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
     setIsLoadingMovies(true);
     setError(null);
     try {
-      let fetchedMovies: Movie[];
-      if (process.env.API_KEY) {
-        fetchedMovies = await getInitialMovies(languages, previouslySeenCanonicalIds); // Pass previously seen canonical IDs
-      } else {
-        // Fallback to shuffled MOCK_MOVIES if API key is not present for variety
-        // Filter out previously seen mock movies using canonical IDs
-        const availableMockMovies = MOCK_MOVIES.filter(movie => !previouslySeenCanonicalIds.has(movie.canonicalId));
-        fetchedMovies = shuffleArray(availableMockMovies).slice(0, 10); // Ensure exactly 10 movies
-      }
+      // getInitialMovies calls our /api/openrouter serverless route and falls
+      // back to MOCK_MOVIES internally if that call fails for any reason.
+      const fetchedMovies = await getInitialMovies(languages, previouslySeenCanonicalIds);
       setMovieStack(fetchedMovies.slice(0, 10)); // Ensure exactly 10 movies
     } catch (err) {
       console.error("Failed to fetch initial movies:", err);
@@ -98,66 +92,9 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
     setIsLoadingRecommendation(true);
     setError(null);
     try {
-      // getFinalRecommendation now returns Promise<Recommendation[]>
-      const fetchedRecommendations = process.env.API_KEY
-        ? await getFinalRecommendation(likedMoviesRef.current, dislikedMoviesRef.current, languages)
-        : [ // Mock data for 5 recommendations
-            {
-              topMatch: "The Cinematic Gem!",
-              whyItMatches: "A placeholder movie that perfectly fits your language preferences and swipe history.",
-              streamingPlatforms: PLACEHOLDER_STREAMING_PLATFORMS,
-              matchPercentage: 98,
-              imdbRating: '8.5/10',
-              duration: '2h 15m',
-              fullCasting: ['Actor A', 'Actor B', 'Actor C'],
-              availableLanguages: ['English', 'Spanish'],
-              canonicalId: 'the-cinematic-gem', // Explicitly set canonical ID
-            },
-            {
-              topMatch: "Another Great Pick!",
-              whyItMatches: "This one has themes and actors you enjoyed, with a fresh twist.",
-              streamingPlatforms: PLACEHOLDER_STREAMING_PLATFORMS,
-              matchPercentage: 92,
-              imdbRating: '7.9/10',
-              duration: '1h 55m',
-              fullCasting: ['Actor D', 'Actor E', 'Actor F'],
-              availableLanguages: ['English', 'French'],
-              canonicalId: 'another-great-pick', // Explicitly set canonical ID
-            },
-            {
-              topMatch: "Hidden Gem Discovery!",
-              whyItMatches: "An underrated masterpiece aligning with your preferred genres and directors.",
-              streamingPlatforms: PLACEHOLDER_STREAMING_PLATFORMS,
-              matchPercentage: 88,
-              imdbRating: '7.6/10',
-              duration: '2h 05m',
-              fullCasting: ['Actor G', 'Actor H'],
-              availableLanguages: ['English', 'German'],
-              canonicalId: 'hidden-gem-discovery', // Explicitly set canonical ID
-            },
-            {
-              topMatch: "A Classic You'll Love!",
-              whyItMatches: "Recalling your appreciation for older films, this timeless classic fits the bill.",
-              streamingPlatforms: PLACEHOLDER_STREAMING_PLATFORMS,
-              matchPercentage: 90,
-              imdbRating: '8.1/10',
-              duration: '2h 20m',
-              fullCasting: ['Classic Actor X', 'Classic Actor Y'],
-              availableLanguages: ['English'],
-              canonicalId: 'a-classic-youll-love', // Explicitly set canonical ID
-            },
-            {
-              topMatch: "Unexpected Delight!",
-              whyItMatches: "Based on subtle patterns in your likes, this offers a unique and enjoyable experience.",
-              streamingPlatforms: PLACEHOLDER_STREAMING_PLATFORMS,
-              matchPercentage: 85,
-              imdbRating: '7.2/10',
-              duration: '1h 40m',
-              fullCasting: ['New Talent P', 'New Talent Q'],
-              availableLanguages: ['English', 'Japanese'],
-              canonicalId: 'unexpected-delight', // Explicitly set canonical ID
-            },
-          ];
+      // getFinalRecommendation calls our /api/openrouter serverless route and
+      // falls back to mock recommendations internally if that call fails.
+      const fetchedRecommendations = await getFinalRecommendation(likedMoviesRef.current, dislikedMoviesRef.current, languages);
       setFinalRecommendations(fetchedRecommendations);
       setShowingFinalRecommendationsSection(true);
 
