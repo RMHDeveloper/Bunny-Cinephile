@@ -64,8 +64,11 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
 
 
   const cardContainerRef = useRef<HTMLDivElement>(null); // Ref for the draggable div
+  const fetchInFlightRef = useRef(false); // Guards against duplicate concurrent fetches (e.g. React dev-mode double-invoke)
 
   const fetchInitialMovies = useCallback(async () => {
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
     setIsLoadingMovies(true);
     setError(null);
     try {
@@ -87,6 +90,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
       setMovieStack(shuffleArray(availableMockMovies).slice(0,10)); // Changed to 10 movies
     } finally {
       setIsLoadingMovies(false);
+      fetchInFlightRef.current = false;
     }
   }, [languages, previouslySeenCanonicalIds]); // Dependency on previouslySeenCanonicalIds
 
