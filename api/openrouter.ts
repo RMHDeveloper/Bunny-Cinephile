@@ -11,7 +11,7 @@ const OPENROUTER_MODELS = [
   'nvidia/nemotron-3-super-120b-a12b:free',
 ];
 
-const REQUEST_TIMEOUT_MS = 4000;
+const REQUEST_TIMEOUT_MS = 9000; // TEMP: widened for diagnostics, see how long Vercel->OpenRouter actually takes
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -33,6 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const t0 = Date.now();
 
   try {
     const response = await fetch(OPENROUTER_URL, {
@@ -69,13 +70,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    res.status(200).json({ content });
+    res.status(200).json({ content, elapsedMs: Date.now() - t0 });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      res.status(504).json({ error: `OpenRouter request timed out after ${REQUEST_TIMEOUT_MS}ms.` });
+      res.status(504).json({ error: `OpenRouter request timed out after ${REQUEST_TIMEOUT_MS}ms.`, elapsedMs: Date.now() - t0 });
       return;
     }
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error', elapsedMs: Date.now() - t0 });
   } finally {
     clearTimeout(timeoutId);
   }
