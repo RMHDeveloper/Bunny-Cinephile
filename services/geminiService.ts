@@ -33,7 +33,7 @@ function parseJsonFromText<T>(text: string): T {
   return JSON.parse(jsonSlice);
 }
 
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 4000;
 
 async function callOpenRouterJSON<T>(prompt: string): Promise<T> {
   if (!API_KEY) {
@@ -43,9 +43,8 @@ async function callOpenRouterJSON<T>(prompt: string): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  let response: Response;
   try {
-    response = await fetch(OPENROUTER_URL, {
+    const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -65,6 +64,21 @@ async function callOpenRouterJSON<T>(prompt: string): Promise<T> {
         ],
       }),
     });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`OpenRouter API error (${response.status}): ${errText}`);
+    }
+
+    // The timeout must stay armed through this read too — a stalled response
+    // body (headers arrive fine, but the stream never finishes) previously
+    // hung forever because the timer was cleared right after fetch() resolved.
+    const data = await response.json();
+    const content: string | undefined = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('Empty response from OpenRouter API.');
+    }
+    return parseJsonFromText<T>(content);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new Error(`OpenRouter request timed out after ${REQUEST_TIMEOUT_MS}ms.`);
@@ -73,19 +87,6 @@ async function callOpenRouterJSON<T>(prompt: string): Promise<T> {
   } finally {
     clearTimeout(timeoutId);
   }
-
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`OpenRouter API error (${response.status}): ${errText}`);
-  }
-
-  const data = await response.json();
-  const content: string | undefined = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error('Empty response from OpenRouter API.');
-  }
-
-  return parseJsonFromText<T>(content);
 }
 
 // Utility function to generate a consistent, canonical ID from a movie title
