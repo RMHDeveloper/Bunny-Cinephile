@@ -27,6 +27,7 @@ export interface Movie {
   actors: string[]; // Added: List of main actors
   imdbRating: string; // Added: IMDb rating, e.g., "8.2/10"
   releaseYear: number; // Added: Release year for the movie
+  language: string; // Original/primary language the movie was produced in
 }
 
 export interface Recommendation {
@@ -45,6 +46,8 @@ export interface Recommendation {
 
 export enum AppPages {
   LanguageSelection,
+  GenreSelection,
+  MoodCheck,
   QuickSwipeRefiner,
   FinalRecommendationDisplay,
 }

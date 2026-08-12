@@ -1,8 +1,3 @@
-// This file is no longer used in the main application flow based on the user's request.
-// It is conceptually removed as 'GenreSelection' is no longer the first page.
-// The App.tsx file no longer renders this component.
-// Keeping it here for completeness of existing files, but it's effectively inactive.
-
 import React, { useState } from 'react';
 import PageLayout from '../components/PageLayout';
 import Button from '../components/Button';

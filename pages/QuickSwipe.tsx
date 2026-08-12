@@ -4,11 +4,12 @@ import MovieCard from '../components/MovieCard';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Button from '../components/Button';
 import { Movie, Recommendation } from '../types';
-import { getInitialMovies, getFinalRecommendation, MOCK_MOVIES, shuffleArray } from '../services/geminiService';
-import { PLACEHOLDER_STREAMING_PLATFORMS } from '../constants'; // Import from constants
+import { getInitialMovies, getFinalRecommendation } from '../services/geminiService';
 
 interface QuickSwipeProps {
   languages: string[];
+  genres: string[];
+  mood: string | null;
   onBack: () => void; // onBack is now always required for PageLayout's back button
   onRestart: () => void;
   previouslySeenCanonicalIds: Set<string>; // Updated prop: canonical IDs of all movies seen so far
@@ -18,7 +19,7 @@ interface QuickSwipeProps {
 const SWIPE_THRESHOLD = 80; // pixels to trigger a swipe
 const ROTATION_FACTOR = 0.1; // degrees per pixel of drag for subtle rotation
 
-const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, previouslySeenCanonicalIds, onMoviesProcessed }) => {
+const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack, onRestart, previouslySeenCanonicalIds, onMoviesProcessed }) => {
   const [movieStack, setMovieStack] = useState<Movie[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [likedMovies, setLikedMovies] = useState<Movie[]>([]);
@@ -65,6 +66,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
 
   const cardContainerRef = useRef<HTMLDivElement>(null); // Ref for the draggable div
   const fetchInFlightRef = useRef(false); // Guards against duplicate concurrent fetches (e.g. React dev-mode double-invoke)
+  const finalRecommendationInFlightRef = useRef(false); // Guards against double-clicking Retry firing overlapping requests
 
   const fetchInitialMovies = useCallback(async () => {
     if (fetchInFlightRef.current) return;
@@ -72,29 +74,27 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
     setIsLoadingMovies(true);
     setError(null);
     try {
-      // getInitialMovies calls our /api/openrouter serverless route and falls
-      // back to MOCK_MOVIES internally if that call fails for any reason.
-      const fetchedMovies = await getInitialMovies(languages, previouslySeenCanonicalIds);
+      // getInitialMovies calls our /api/openrouter serverless route.
+      const fetchedMovies = await getInitialMovies(languages, genres, mood, previouslySeenCanonicalIds);
       setMovieStack(fetchedMovies.slice(0, 10)); // Ensure exactly 10 movies
     } catch (err) {
       console.error("Failed to fetch initial movies:", err);
       setError("Failed to load movies. Please try again.");
-      // Fallback to shuffled mock data on API error as well
-      const availableMockMovies = MOCK_MOVIES.filter(movie => !previouslySeenCanonicalIds.has(movie.canonicalId));
-      setMovieStack(shuffleArray(availableMockMovies).slice(0,10)); // Changed to 10 movies
+      setMovieStack([]);
     } finally {
       setIsLoadingMovies(false);
       fetchInFlightRef.current = false;
     }
-  }, [languages, previouslySeenCanonicalIds]); // Dependency on previouslySeenCanonicalIds
+  }, [languages, genres, mood, previouslySeenCanonicalIds]); // Dependency on previouslySeenCanonicalIds
 
   const fetchFinalRecommendation = useCallback(async () => {
+    if (finalRecommendationInFlightRef.current) return;
+    finalRecommendationInFlightRef.current = true;
     setIsLoadingRecommendation(true);
     setError(null);
     try {
-      // getFinalRecommendation calls our /api/openrouter serverless route and
-      // falls back to mock recommendations internally if that call fails.
-      const fetchedRecommendations = await getFinalRecommendation(likedMoviesRef.current, dislikedMoviesRef.current, languages);
+      // getFinalRecommendation calls our /api/openrouter serverless route.
+      const fetchedRecommendations = await getFinalRecommendation(likedMoviesRef.current, dislikedMoviesRef.current, languages, genres, mood);
       setFinalRecommendations(fetchedRecommendations);
       setShowingFinalRecommendationsSection(true);
 
@@ -105,29 +105,13 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
     } catch (err) {
       console.error("Failed to fetch final recommendation:", err);
       setError("Failed to get your movie match. Please try again or restart.");
-      setFinalRecommendations([
-        // Fallback to a single mock recommendation if all else fails
-        {
-          topMatch: "A Great Movie for You!",
-          whyItMatches: "This is a fantastic pick that generally aligns with popular choices and broad appeal.",
-          streamingPlatforms: PLACEHOLDER_STREAMING_PLATFORMS,
-          matchPercentage: 90,
-          imdbRating: '7.8/10',
-          duration: '1h 50m',
-          fullCasting: ['Lead Actor', 'Supporting Actor'],
-          availableLanguages: ['English'],
-          canonicalId: 'a-great-movie-for-you',
-        },
-      ]);
-      setShowingFinalRecommendationsSection(true);
-
-      // Report movies as seen even if recommendation failed, to prevent re-suggesting them
-      const newlySeenCanonicalIds = [...likedMoviesRef.current.map(m => m.canonicalId), ...dislikedMoviesRef.current.map(m => m.canonicalId)];
-      onMoviesProcessed(newlySeenCanonicalIds);
+      // Don't mark these movies as seen - a failed recommendation shouldn't
+      // remove them from the pool a retry could still use.
     } finally {
       setIsLoadingRecommendation(false);
+      finalRecommendationInFlightRef.current = false;
     }
-  }, [languages, onMoviesProcessed]); // Dependency on onMoviesProcessed
+  }, [languages, genres, mood, onMoviesProcessed]); // Dependency on onMoviesProcessed
 
   useEffect(() => {
     fetchInitialMovies();
@@ -271,8 +255,17 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
         }
       `}</style>
       
-      {isLoadingMovies && !showingFinalRecommendationsSection && <LoadingSpinner />}
-      {error && <p className="text-glow-red mb-4">{error}</p>}
+      {isLoadingMovies && !showingFinalRecommendationsSection && (
+        <LoadingSpinner message="Finding movies for you... this can take up to a minute on the free tier." />
+      )}
+      {error && (
+        <div className="mb-4 flex flex-col items-center gap-3">
+          <p className="text-glow-red">{error}</p>
+          <Button onClick={movieStack.length === 0 ? fetchInitialMovies : fetchFinalRecommendation}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-col flex-grow justify-between items-center w-full">
         {/* Movie Swiping Section */}
@@ -344,7 +337,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, onBack, onRestart, p
 
       {/* Final Recommendation Section */}
       {isFinishedSwiping && !showingFinalRecommendationsSection && isLoadingRecommendation && (
-         <LoadingSpinner />
+         <LoadingSpinner message="Putting together your top matches... this can take up to a minute on the free tier." />
       )}
 
       {!isLoadingRecommendation && showingFinalRecommendationsSection && finalRecommendations && (

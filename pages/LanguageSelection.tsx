@@ -41,7 +41,7 @@ const LanguageSelection: React.FC<LanguageSelectionProps> = ({ onNext, initialSe
       </div>
       <div className="w-full flex justify-center mt-8">
         <Button onClick={() => onNext(selectedLanguages)} disabled={isNextDisabled}>
-          Next: Refine with Swipes!
+          Next: Pick Your Vibe Pix!
         </Button>
       </div>
     </PageLayout>

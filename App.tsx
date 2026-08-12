@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import LanguageSelection from './pages/LanguageSelection';
+import GenreSelection from './pages/GenreSelection';
+import MoodCheck from './pages/MoodCheck';
 import QuickSwipe from './pages/QuickSwipe';
 import AppLoadingScreen from './components/AppLoadingScreen'; // Import the new loading screen
 import { AppPages } from './types';
@@ -7,6 +9,8 @@ import { AppPages } from './types';
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<AppPages>(AppPages.LanguageSelection);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [appLoading, setAppLoading] = useState(true); // New loading state
   
   // New state to keep track of all movie canonical IDs seen across multiple QuickSwipe sessions
@@ -28,12 +32,24 @@ const App: React.FC = () => {
 
   const handleLanguageSelection = (languages: string[]) => {
     setSelectedLanguages(languages);
+    setCurrentPage(AppPages.GenreSelection);
+  };
+
+  const handleGenreSelection = (genres: string[]) => {
+    setSelectedGenres(genres);
+    setCurrentPage(AppPages.MoodCheck);
+  };
+
+  const handleMoodSelection = (mood: string) => {
+    setSelectedMood(mood);
     setCurrentPage(AppPages.QuickSwipeRefiner);
   };
 
   const handleRestart = () => {
     setCurrentPage(AppPages.LanguageSelection);
     setSelectedLanguages([]);
+    setSelectedGenres([]);
+    setSelectedMood(null);
     setAllSeenMovieIds(new Set()); // Clear all seen canonical IDs on a full restart
   };
 
@@ -41,6 +57,10 @@ const App: React.FC = () => {
     setCurrentPage((prevPage) => {
       switch (prevPage) {
         case AppPages.QuickSwipeRefiner:
+          return AppPages.MoodCheck;
+        case AppPages.MoodCheck:
+          return AppPages.GenreSelection;
+        case AppPages.GenreSelection:
           return AppPages.LanguageSelection;
         case AppPages.LanguageSelection: // No back action for the first page
         default:
@@ -68,14 +88,32 @@ const App: React.FC = () => {
             // No onBack prop as this is the first page. Handled internally by PageLayout.
           />
         );
+      case AppPages.GenreSelection:
+        return (
+          <GenreSelection
+            onNext={handleGenreSelection}
+            initialSelection={selectedGenres}
+            onBack={handleBack}
+          />
+        );
+      case AppPages.MoodCheck:
+        return (
+          <MoodCheck
+            onNext={handleMoodSelection}
+            initialSelection={selectedMood}
+            onBack={handleBack}
+          />
+        );
       case AppPages.QuickSwipeRefiner:
-        if (selectedLanguages.length === 0) {
-          // Should ideally not happen if language selection is a prerequisite
-          return <p className="text-red-500">Error: Language not selected. Please restart.</p>;
+        if (selectedLanguages.length === 0 || selectedGenres.length === 0 || !selectedMood) {
+          // Should ideally not happen if these are all prerequisites
+          return <p className="text-red-500">Error: Selections incomplete. Please restart.</p>;
         }
         return (
           <QuickSwipe
             languages={selectedLanguages}
+            genres={selectedGenres}
+            mood={selectedMood}
             onBack={handleBack}
             onRestart={handleRestart}
             previouslySeenCanonicalIds={allSeenMovieIds} // Pass the set of all seen movie canonical IDs
