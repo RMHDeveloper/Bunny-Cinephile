@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/openrouter.ts": {
+      "maxDuration": 60
+    }
+  }
+}
