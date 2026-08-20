@@ -50,12 +50,15 @@ const OPENROUTER_MODELS = [
 // Measured directly against OpenRouter's free tier: a real 10-movie structured
 // prompt reliably takes 35-46s (these free models emit thousands of internal
 // reasoning tokens before answering, and the shared free pool queues on top of
-// that). This is now the fallback path only (Gemini is tried first, above),
-// so it's kept just under 45s rather than the 55s once used when this was the
-// primary path - GEMINI_TIMEOUT_MS (7s) + this must stay safely under Vercel's
-// 60s Hobby-plan maxDuration (see vercel.json), or the platform kills the
-// function before this code's own graceful error response can be sent.
-const REQUEST_TIMEOUT_MS = 45000;
+// that), and the heavier final-recommendation prompt can run longer still.
+// This is now the fallback path only (Gemini is tried first, above), so on
+// Vercel it's kept just under 45s - GEMINI_TIMEOUT_MS (7s) + this must stay
+// safely under Vercel's 60s Hobby-plan maxDuration (see vercel.json), or the
+// platform kills the function before this code's own graceful error response
+// can be sent. Locally (plain `vite`/`vite dev`, no Vercel maxDuration to
+// respect) there's no such ceiling, so give slow free models more room there
+// rather than surfacing a false-positive timeout.
+const REQUEST_TIMEOUT_MS = process.env.VERCEL ? 45000 : 90000;
 
 async function callModel(model: string, prompt: string, apiKey: string, signal: AbortSignal): Promise<string> {
   const response = await fetch(OPENROUTER_URL, {
