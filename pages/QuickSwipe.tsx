@@ -277,7 +277,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
           <>
             <div
               ref={cardContainerRef}
-              className="relative w-full max-w-sm mx-auto flex-grow max-h-[50vh] min-h-[350px] mb-6 flex items-center justify-center"
+              className="relative w-full max-w-sm mx-auto mb-6 max-h-[70vh]"
               style={{
                 transform: `translateX(${swipeTranslateX}px) rotate(${swipeRotate}deg)`,
                 // Transition for snap-back (when not dragging or flinging off)
@@ -310,7 +310,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
                   <span className="text-glow-red text-5xl font-extrabold drop-shadow-lg opacity-80">DISLIKE ❌</span>
               </div>
 
-              <div className={`absolute w-full h-full ${cardAnimation === 'swipeLeft' ? 'swipe-left-animation' : cardAnimation === 'swipeRight' ? 'swipe-right-animation' : ''}`}>
+              <div className={`w-full ${cardAnimation === 'swipeLeft' ? 'swipe-left-animation' : cardAnimation === 'swipeRight' ? 'swipe-right-animation' : ''}`}>
                 <MovieCard movie={currentMovie} />
               </div>
             </div>

@@ -21,8 +21,8 @@ const VibeCard: React.FC<VibeCardProps> = ({ vibe, isSelected, onClick }) => {
         bg-white/5 backdrop-blur-sm border border-white/20
         transition-all duration-300 ease-in-out cursor-pointer
         ${isSelected
-          ? 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-lg shadow-neon-blue/30 scale-105'
-          : 'hover:bg-white/10 hover:border-white/40 hover:scale-105'
+          ? 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-lg shadow-neon-blue/30'
+          : 'hover:bg-white/10 hover:border-white/40'
         }
       `}
     >
