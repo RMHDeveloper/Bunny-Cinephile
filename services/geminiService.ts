@@ -54,22 +54,6 @@ async function callOpenRouterJSON<T>(prompt: string): Promise<T> {
   return parseJsonFromText<T>(data.content);
 }
 
-// Free-tier models frequently ignore the language constraint in the prompt
-// and default to well-known English titles. Rather than silently falling
-// back to an unfiltered (likely all-English) result the first time that
-// happens, retry once with a sharper, more repetitive corrective prompt
-// before giving up.
-async function fetchWithLanguageRetry<T>(
-  buildPrompt: (corrective: boolean) => string,
-  matches: (result: T) => boolean,
-): Promise<T> {
-  const first = await callOpenRouterJSON<T>(buildPrompt(false));
-  if (matches(first)) return first;
-
-  const second = await callOpenRouterJSON<T>(buildPrompt(true));
-  return matches(second) ? second : first;
-}
-
 // Utility function to generate a consistent, canonical ID from a movie title
 export function generateCanonicalId(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-*|-*$/g, '');
@@ -89,13 +73,9 @@ export const getInitialMovies = async (
   // breakdown (2 popular, 2 pre-2005, etc.) used to sit here too - dropped
   // because it was the single biggest driver of that reasoning time.
   const languageNames = toLanguageNames(languages);
-  const buildLanguageClause = (corrective: boolean) => {
-    if (languageNames.length === 0) return '';
-    const list = languageNames.join(' or ');
-    return corrective
-      ? `STRICT REQUIREMENT, NON-NEGOTIABLE: your previous answer ignored this - every one of the 10 movies MUST be a film originally made/shot in ${list}. Do NOT include Hollywood/English-language films unless ${list} includes English. Verify each title's original language before including it.`
-      : `Language (required, strict): every movie must be originally made/shot in ${list} (not merely dubbed into it). Do not substitute English-language/Hollywood films.`;
-  };
+  const languageClause = languageNames.length > 0
+    ? `Language (required, strict): every movie must be originally made/shot in ${languageNames.join(' or ')} (not merely dubbed into it). Do not substitute English-language/Hollywood films.`
+    : '';
 
   const genreNames = toGenreNames(genres);
   const genreClause = genreNames.length > 0
@@ -110,9 +90,9 @@ export const getInitialMovies = async (
   // Modify exclude clause to target canonical IDs (titles)
   const excludeClause = excludeCanonicalIds.size > 0 ? `Exclude: ${Array.from(excludeCanonicalIds).join(', ')}.` : '';
 
-  const buildPrompt = (corrective: boolean) => {
-    const promptHeader = [buildLanguageClause(corrective), genreClause, moodClause, excludeClause].filter(Boolean).join(' ');
-    return `${promptHeader}
+  const promptHeader = [languageClause, genreClause, moodClause, excludeClause].filter(Boolean).join(' ');
+
+  const prompt = `${promptHeader}
 
 Suggest 10 movies with a good mix of well-known and lesser-known titles, spanning different eras and styles.
 
@@ -121,13 +101,8 @@ For each: title, primary genres, a plausible director, 3 main actors, IMDb ratin
 Return ONLY a JSON array of exactly 10 objects, each with this exact shape:
 { "id": string, "title": string, "genres": string[], "director": string, "actors": string[], "imdbRating": string, "releaseYear": number, "language": string }
 Ensure ids are unique.`;
-  };
 
-  const matchesLanguage = (result: Movie[]) =>
-    languageNames.length === 0 ||
-    result.some(movie => languageNames.some(name => movie.language?.toLowerCase().includes(name.toLowerCase())));
-
-  let movies: Movie[] = await fetchWithLanguageRetry<Movie[]>(buildPrompt, matchesLanguage);
+  let movies: Movie[] = await callOpenRouterJSON<Movie[]>(prompt);
 
   // Add canonicalId and client-side filter to ensure no excluded movies are returned (robust fallback)
   movies = movies.map(movie => ({
@@ -144,7 +119,7 @@ Ensure ids are unique.`;
     if (languageMatched.length > 0) {
       movies = languageMatched;
     } else {
-      console.warn(`getInitialMovies: model ignored the language requirement (${languageNames.join(', ')}) even after a retry; returning its response unfiltered.`);
+      console.warn(`getInitialMovies: model ignored the language requirement (${languageNames.join(', ')}); returning its response unfiltered.`);
     }
   }
 
@@ -173,13 +148,9 @@ export const getFinalRecommendation = async (
   // Kept short for the same reason as getInitialMovies: verbose clauses
   // measurably increase how long free-tier reasoning models take to answer.
   const languageNames = toLanguageNames(languages);
-  const buildLanguageClause = (corrective: boolean) => {
-    if (languageNames.length === 0) return '';
-    const list = languageNames.join(' or ');
-    return corrective
-      ? `STRICT REQUIREMENT, NON-NEGOTIABLE: your previous answer ignored this - every one of the 5 recommendations MUST be a film originally made/shot in ${list}, and "availableLanguages" must include ${list}. Do NOT default to Hollywood/English-language films unless ${list} includes English.`
-      : `Language (required, strict): every recommended movie must be originally made/shot in ${list} (not merely dubbed into it), and its "availableLanguages" must include ${list}.`;
-  };
+  const languageClause = languageNames.length > 0
+    ? `Language (required, strict): every recommended movie must be originally made/shot in ${languageNames.join(' or ')} (not merely dubbed into it), and its "availableLanguages" must include ${languageNames.join(' or ')}.`
+    : '';
 
   const explicitGenreNames = toGenreNames(genres);
   const explicitGenreClause = explicitGenreNames.length > 0
@@ -200,9 +171,9 @@ export const getFinalRecommendation = async (
   const dislikedDirectors = [...new Set(dislikedMovies.map(m => m.director))].join(', ') || 'none';
   const dislikedActors = [...new Set(dislikedMovies.flatMap(m => m.actors))].join(', ') || 'none';
 
-  const buildPrompt = (corrective: boolean) => {
-    const promptHeader = [buildLanguageClause(corrective), explicitGenreClause, moodClause].filter(Boolean).join(' ');
-    return `${promptHeader}
+  const promptHeader = [languageClause, explicitGenreClause, moodClause].filter(Boolean).join(' ');
+
+  const prompt = `${promptHeader}
 
 Liked/seen: ${likedTitles || 'none'}. Disliked: ${dislikedTitles || 'none'}.
 Liked genres: ${likedGenres}. Liked directors: ${likedDirectors}. Liked actors: ${likedActors}.
@@ -214,13 +185,8 @@ For each: TOP MATCH title, a short WHY IT MATCHES explanation (2-3 sentences, re
 
 Return ONLY a JSON array of exactly 5 objects, each with this exact shape:
 { "topMatch": string, "whyItMatches": string, "matchPercentage": number, "streamingPlatforms": string[], "imdbRating": string, "duration": string, "fullCasting": string[], "availableLanguages": string[] }`;
-  };
 
-  const matchesLanguage = (result: Recommendation[]) =>
-    languageNames.length === 0 ||
-    result.some(rec => rec.availableLanguages?.some(lang => languageNames.some(name => lang.toLowerCase().includes(name.toLowerCase()))));
-
-  let recommendations: Recommendation[] = await fetchWithLanguageRetry<Recommendation[]>(buildPrompt, matchesLanguage);
+  let recommendations: Recommendation[] = await callOpenRouterJSON<Recommendation[]>(prompt);
   recommendations = recommendations.map((rec) => ({
     ...rec,
     canonicalId: generateCanonicalId(rec.topMatch),
@@ -234,7 +200,7 @@ Return ONLY a JSON array of exactly 5 objects, each with this exact shape:
     if (languageMatched.length > 0) {
       recommendations = languageMatched;
     } else {
-      console.warn(`getFinalRecommendation: model ignored the language requirement (${languageNames.join(', ')}) even after a retry; returning its response unfiltered.`);
+      console.warn(`getFinalRecommendation: model ignored the language requirement (${languageNames.join(', ')}); returning its response unfiltered.`);
     }
   }
 
