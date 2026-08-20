@@ -319,14 +319,14 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
               <Button 
                 onClick={() => handleSwipe('left')} 
                 disabled={areButtonsDisabled}
-                className="bg-red-700/60 border-red-500 text-white shadow-red-500/30 hover:bg-red-600/80 hover:shadow-red-500/50 flex-1"
+                className="bg-red-600/90 border-red-500 !text-white shadow-red-500/50 hover:bg-red-500 hover:shadow-red-500/70 flex-1"
               >
                 ❌ Dislike
               </Button>
               <Button 
                 onClick={() => handleSwipe('right')} 
                 disabled={areButtonsDisabled}
-                className="bg-green-700/60 border-green-500 text-white shadow-green-500/30 hover:bg-green-600/80 hover:shadow-green-500/50 flex-1"
+                className="bg-green-600/90 border-green-500 !text-white shadow-green-500/50 hover:bg-green-500 hover:shadow-green-500/70 flex-1"
               >
                 LIKE ✨
               </Button>
