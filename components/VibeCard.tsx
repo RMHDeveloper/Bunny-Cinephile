@@ -17,7 +17,7 @@ const VibeCard: React.FC<VibeCardProps> = ({ vibe, isSelected, onClick }) => {
       type="button"
       onClick={handleClick}
       className={`
-        flex flex-col items-center justify-center p-6 rounded-2xl
+        w-full flex flex-col items-center justify-center p-4 sm:p-6 rounded-2xl overflow-hidden
         bg-white/5 backdrop-blur-sm border border-white/20
         transition-all duration-300 ease-in-out cursor-pointer
         ${isSelected
@@ -32,7 +32,7 @@ const VibeCard: React.FC<VibeCardProps> = ({ vibe, isSelected, onClick }) => {
       ) : (
         <span className="text-5xl mb-3">{vibe.emoji}</span>
       )}
-      <h3 className="text-xl font-bold mb-1 text-white">{vibe.name}</h3>
+      <h3 className="text-lg sm:text-xl font-bold mb-1 text-white break-words">{vibe.name}</h3>
       <p className="text-sm text-white/70">{vibe.description}</p>
     </button>
   );

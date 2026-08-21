@@ -19,6 +19,22 @@ interface QuickSwipeProps {
 const SWIPE_THRESHOLD = 80; // pixels to trigger a swipe
 const ROTATION_FACTOR = 0.1; // degrees per pixel of drag for subtle rotation
 
+// Both the initial-movies and final-recommendation calls hit the same free-tier
+// AI backend, which can fail in a couple of recognizable ways (rate limit,
+// every model timing out under load). Surfacing which one happened - instead
+// of a generic "please try again" - tells the user this is temporary demand on
+// a free service, not a broken app, and that Retry is genuinely worth trying.
+function describeFetchError(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/rate limit/i.test(message)) {
+    return "The free AI models are rate-limited right now (high demand). Please wait a few minutes and hit Retry.";
+  }
+  if (/aborted|timed out/i.test(message)) {
+    return "The free AI models are taking too long to respond right now (high demand). Please hit Retry.";
+  }
+  return fallback;
+}
+
 const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack, onRestart, previouslySeenCanonicalIds, onMoviesProcessed }) => {
   const [movieStack, setMovieStack] = useState<Movie[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -79,7 +95,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
       setMovieStack(fetchedMovies.slice(0, 10)); // Ensure exactly 10 movies
     } catch (err) {
       console.error("Failed to fetch initial movies:", err);
-      setError("Failed to load movies. Please try again.");
+      setError(describeFetchError(err, "Failed to load movies. Please try again."));
       setMovieStack([]);
     } finally {
       setIsLoadingMovies(false);
@@ -104,7 +120,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
 
     } catch (err) {
       console.error("Failed to fetch final recommendation:", err);
-      setError("Failed to get your movie match. Please try again or restart.");
+      setError(describeFetchError(err, "Failed to get your movie match. Please try again or restart."));
       // Don't mark these movies as seen - a failed recommendation shouldn't
       // remove them from the pool a retry could still use.
     } finally {
