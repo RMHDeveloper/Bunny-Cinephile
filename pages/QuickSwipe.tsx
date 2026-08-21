@@ -296,7 +296,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
                       transition: 'opacity 0.1s ease-out, transform 0.1s ease-out'
                   }}
               >
-                  <span className="text-glow-green text-5xl font-extrabold drop-shadow-lg opacity-80">LIKE ✨</span>
+                  <span className="text-glow-green text-5xl font-extrabold drop-shadow-lg opacity-80">LIKE ✅</span>
               </div>
               {/* DISLIKE overlay */}
               <div
@@ -328,7 +328,7 @@ const QuickSwipe: React.FC<QuickSwipeProps> = ({ languages, genres, mood, onBack
                 disabled={areButtonsDisabled}
                 className="bg-green-600/90 border-green-500 !text-white shadow-green-500/50 hover:bg-green-500 hover:shadow-green-500/70 flex-1"
               >
-                LIKE ✨
+                LIKE ✅
               </Button>
             </div>
           </>
