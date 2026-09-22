@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { GoogleGenAI } from '@google/genai';
 
 const SYSTEM_INSTRUCTION = 'You are a JSON API. Respond with ONLY valid JSON matching the shape requested by the user. No markdown, no code fences, no commentary before or after the JSON.';
+
+const PROXY_APP_SLUG = 'bunny-cinephile';
 
 // Fast, non-reasoning-by-default free-tier model - raced alongside OpenRouter's
 // reasoning models below to compare real-world speed/reliability. Note:
@@ -16,26 +17,36 @@ const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 // instead of eating a large chunk of the shared 55s budget first.
 const GEMINI_TIMEOUT_MS = 7000;
 
-async function callGemini(prompt: string, apiKey: string, signal: AbortSignal): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: prompt,
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      responseMimeType: 'application/json',
-      abortSignal: signal,
+async function callGemini(prompt: string, proxyUrl: string, proxySecret: string, signal: AbortSignal): Promise<string> {
+  const upstream = await fetch(`${proxyUrl}/api/proxy/${PROXY_APP_SLUG}`, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-proxy-secret': proxySecret,
     },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+        responseMimeType: 'application/json',
+      },
+    }),
   });
 
-  const content = response.text;
+  if (!upstream.ok) {
+    const errText = await upstream.text().catch(() => '');
+    throw new Error(`gemini proxy error (${upstream.status}): ${errText}`);
+  }
+
+  const data = await upstream.json();
+  const content: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!content) {
     throw new Error('gemini returned an empty response.');
   }
   return content;
 }
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 // Free models on OpenRouter queue behind other users unpredictably - even a
 // tiny prompt sometimes took 9s+. Racing several models in parallel (instead
 // of trying one at a time, or relying on OpenRouter's own sequential "models"
@@ -60,15 +71,13 @@ const OPENROUTER_MODELS = [
 // rather than surfacing a false-positive timeout.
 const REQUEST_TIMEOUT_MS = process.env.VERCEL ? 45000 : 90000;
 
-async function callModel(model: string, prompt: string, apiKey: string, signal: AbortSignal): Promise<string> {
-  const response = await fetch(OPENROUTER_URL, {
+async function callModel(model: string, prompt: string, proxyUrl: string, proxySecret: string, signal: AbortSignal): Promise<string> {
+  const response = await fetch(`${proxyUrl}/api/proxy/${PROXY_APP_SLUG}`, {
     method: 'POST',
     signal,
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://bunny-cinephile.vercel.app',
-      'X-Title': 'Bunny Cinephile',
+      'x-proxy-secret': proxySecret,
     },
     body: JSON.stringify({
       model,
@@ -99,12 +108,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' });
+  const proxyUrl = process.env.DASHBOARD_PROXY_URL;
+  const proxySecret = process.env.DASHBOARD_PROXY_SECRET;
+  if (!proxyUrl || !proxySecret) {
+    res.status(500).json({ error: 'DASHBOARD_PROXY_URL / DASHBOARD_PROXY_SECRET is not configured on the server.' });
     return;
   }
-  const geminiApiKey = process.env.GEMINI_API_KEY;
 
   const { prompt } = req.body ?? {};
   if (typeof prompt !== 'string' || !prompt.trim()) {
@@ -115,11 +124,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Try Gemini first with its own short timeout - if it works (the common
   // case), the 3 OpenRouter calls are never made at all, saving that shared
   // free-tier quota. Only falls through to racing OpenRouter on failure.
-  if (geminiApiKey) {
+  {
     const geminiController = new AbortController();
     const geminiTimeoutId = setTimeout(() => geminiController.abort(), GEMINI_TIMEOUT_MS);
     try {
-      const content = await callGemini(prompt, geminiApiKey, geminiController.signal);
+      const content = await callGemini(prompt, proxyUrl, proxySecret, geminiController.signal);
       console.log('/api/openrouter: "gemini" served the request (primary).');
       res.status(200).json({ content });
       return;
@@ -128,8 +137,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } finally {
       clearTimeout(geminiTimeoutId);
     }
-  } else {
-    console.warn('GEMINI_API_KEY not set - racing OpenRouter models only.');
   }
 
   const controller = new AbortController();
@@ -138,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const winner = await Promise.any(
       OPENROUTER_MODELS.map(model =>
-        callModel(model, prompt, apiKey, controller.signal).then(content => ({ source: model, content }))
+        callModel(model, prompt, proxyUrl, proxySecret, controller.signal).then(content => ({ source: model, content }))
       )
     );
     console.log(`/api/openrouter: "${winner.source}" won the OpenRouter fallback race.`);

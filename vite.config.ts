@@ -2,8 +2,9 @@ import path from 'path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// OPENROUTER_API_KEY is read server-side only, by api/openrouter.ts (a Vercel
-// serverless function) - it must never be baked into the client bundle here.
+// DASHBOARD_PROXY_URL / DASHBOARD_PROXY_SECRET are read server-side only, by
+// api/openrouter.ts (a Vercel serverless function) - they must never be baked
+// into the client bundle here.
 
 // `vercel dev` needs an interactive account login, which isn't available in
 // every environment. This plugin runs the same api/openrouter.ts handler
@@ -14,8 +15,8 @@ function localApiPlugin(env: Record<string, string>): Plugin {
     name: 'local-openrouter-api',
     apply: 'serve',
     configureServer(server) {
-      if (env.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
-      if (env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
+      if (env.DASHBOARD_PROXY_URL) process.env.DASHBOARD_PROXY_URL = env.DASHBOARD_PROXY_URL;
+      if (env.DASHBOARD_PROXY_SECRET) process.env.DASHBOARD_PROXY_SECRET = env.DASHBOARD_PROXY_SECRET;
 
       server.middlewares.use('/api/openrouter', async (req: any, res: any) => {
         const chunks: Buffer[] = [];
